@@ -1,0 +1,196 @@
+---
+title: "Eliana Raposo HW4"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: scroll
+---
+
+## Summary {.sidebar}
+This dashboard looks at patterns in arrest data, COVID-19 outcomes, and city performance metrics using multiple visualization techniques discussed in class. The data sources used include: Mass_Arrests.xlsx which contains demographic data about arrests, including race, gender, and age; covid-19.csv which provides daily data at a country level on Covid 19 cases and deaths(in this case log mean daily cases and log deaths were computed to minimize skew); and safeCities_ecoUI.xlsx which contains indicators for cities across economy, safety, infrastructure, environment, etc. to compare overall urban performance. For the cat-cat visualization, Arrests by Race and Gender, I created a grouped bar chart because of the fact that both race and gender are categorical. The position of the bars denotes race, with color distinguishing gender allowing individuals to compare across groups. We see that arrests are consistently higher for males across all racial groups with some racial groups standing out as having higher totals which may lead to further investigation. For the num-num visualization, log(Cases) vs log(Deaths), I created a scatterplot showing the relationship between mean daily cases and mean daily deaths(with a log scale applied to minimize skew). This showed a strong positive relationship between cases and deaths(as expected), however this was not as clearly seen on a non transformed scale. For the num-cat visualization, Age Distribution by Race, I used a boxplot to observe the distribution of age that crimes were committed across different racial groups to observe medians, variability, and outliers in the data. I found that the median age was relatively similar across groups, however, some groups showed more variability than others and some had more extreme outliers. Finally, for the Multivariate Visualization, I used the example of the heatmap. This allowed for the visualization of city performance across multiple categories. As far as my improvements go, I found the initial visualization to be particularly cluttered making it hard to obtain any information. To make improvements, I changed the color scale to make it easier to see performance(as opposed to a gradient), I only took the top 20 cities(this could also easily be altered to see the worst performing 20 cities, etc.), grouping the variables into different sectors, and making the labels more clear and easy to read. Thus, it became easier to compare performance across the cities and categories.
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(readxl)
+library(moments)
+
+covid <- read.csv("covid-19.csv")
+mass_arrests <- read_excel("Mass_Arrests.xlsx")
+safe_cities <- read_excel("safeCities_ecoUI.xlsx")
+```
+
+Row
+-------------------------------------
+
+```{r}
+mass_arrests <- mass_arrests %>%
+  mutate(Race = recode(Race, 
+                       "B" = "Black / African American", 
+                       "H" = "Hispanic", 
+                       "I" = "American Indian or Alaskan Native",
+                       "J" = "Middle Eastern or East Indian",
+                       "O" = "Asian or Pacific Islander",
+                       "U" = "Unknown",
+                       "N" = "Not Applicable",
+                       "W" = "White"))
+
+ggplot(mass_arrests, aes(x = Race, fill = Sex)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Arrests by Race and Gender") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7)) +
+  labs(caption = "Source: Mass Arrests")
+```
+
+```{r}
+ggplot(covid, aes(x = daily_cases_mean, y = daily_deaths_mean)) +
+  geom_point(alpha = 0.5) +
+  labs(title = "log(Cases) vs log(Deaths)",
+       x = "log Daily Cases Mean",
+       y = "log Daily Deaths Mean") +
+  theme_minimal() +
+  scale_x_log10() + scale_y_log10() +
+  labs(caption = "Source: Covid 19 CSV")
+```
+
+```{r}
+ggplot(mass_arrests, aes(x = Race, y = Age)) +
+  geom_boxplot(fill = "skyblue") +
+  labs(title = "Age Distribution by Race") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7)) +
+  labs(caption = "Source: Mass Arrests")
+```
+
+Row
+-------------------------------------
+
+```{r}
+### example
+drop <- c("Overall_Score")
+keep <- setdiff(names(safe_cities), drop)
+safe <- safe_cities[, keep]
+
+library(reshape2)
+
+safeL <- melt(safe, id.vars = "city")
+
+library(ggplot2)
+
+base <- ggplot(data = safeL, 
+               aes(x = variable,
+                   y = city))
+
+heat1 <- base + geom_tile(aes(fill = value)) + labs(caption = "Source: Safe Cities eco UI")
+
+
+### improved 1 (still not great image)
+library(dplyr)
+
+safeL <- safeL %>%
+  group_by(city) %>%
+  mutate(avg_value = mean(value)) %>%
+  ungroup()
+
+heat2 <- ggplot(safeL, aes(
+  x = variable,
+  y = reorder(city, avg_value),
+  fill = value
+)) +
+  geom_tile(color = "white", linewidth = 0.3) +
+  scale_fill_viridis_c(option = "C") +
+  labs(
+    title = "Improved Heatmap of Safe Cities Data",
+    subtitle = "Cities ordered by average score",
+    x = "Dimension",
+    y = "City",
+    fill = "Score"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank()
+  )
+
+### improved 2(not great image either but better(cluttered variables))
+ library(dplyr)
+
+top_cities <- safeL %>%
+  group_by(city) %>%
+  summarize(avg_value = mean(value)) %>%
+  arrange(desc(avg_value)) %>%
+  slice(1:20) %>%
+  pull(city)
+
+safeL_small <- safeL %>%
+  filter(city %in% top_cities)
+
+heat3 <- ggplot(safeL_small, aes(
+  x = variable,
+  y = reorder(city, value, mean),
+  fill = value
+)) +
+  geom_tile(color = "white", linewidth = 0.2) +
+  scale_fill_viridis_c(option = "C") +
+  labs(
+    title = "Top 15 Cities: Performance Across Dimensions",
+    subtitle = "Improved readability with filtering and ordering",
+    x = "Dimension",
+    y = "City",
+    fill = "Score"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+    axis.text.y = element_text(size = 8),
+    panel.grid = element_blank()
+  )
+
+heat1
+```
+
+```{r}
+### improved 3
+
+safeL <- safeL_small %>%
+  mutate(prefix = substr(variable, 1, 1),
+         category = case_when(
+           prefix == "E" ~ "Economy",
+           prefix == "H" ~ "Health",
+           prefix == "I" ~ "Infrastructure",
+           prefix == "P" ~ "Personal Safety",
+           prefix == "D" ~ "Digital Security",
+           TRUE ~ "Other"
+         ))
+
+safeL <- safeL %>%
+  mutate(variable = gsub("^[A-Z]_","", variable),
+         variable = gsub("_", " ", variable))
+
+heat4 <- ggplot(safeL, aes(
+  x = category,
+  y = reorder(city, value, mean),
+  fill = value
+)) +
+  geom_tile(color = "white", linewidth = 0.2) +
+  scale_fill_viridis_c(option = "C") +
+  labs(
+    title = "City Performance by Category",
+    subtitle = "Top 20 Cities: Performance in Different Sectors",
+    x = "Category",
+    y = "City",
+    fill = "Score"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 7),
+    panel.grid = element_blank(),
+    legend.position = "right"
+  ) +
+  labs(caption = "Source: Safe Cities eco UI")
+
+heat4
+```
